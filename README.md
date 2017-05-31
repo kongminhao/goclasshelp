@@ -1,4 +1,4 @@
-# This project is for fucking sichuan university's choose class system
+# This project is for fucking sichuan university's Course selection system
 
 感谢https://github.com/mohuishou/scu-class-help
 
