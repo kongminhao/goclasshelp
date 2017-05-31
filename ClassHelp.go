@@ -47,7 +47,7 @@ func main() {
 C:
 	for {
 		var status int
-		if len(cid) == 0{
+		if len(cid) == 0 {
 			break C
 		}
 		for i := 0; i < len(cid); i++ {
@@ -81,7 +81,7 @@ C:
 
 				count = 0
 			default:
-				break 
+				break
 			}
 		}
 	}
