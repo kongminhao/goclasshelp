@@ -3,8 +3,10 @@ package gofuckjwc
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/parnurzeal/gorequest"
 	"net/http"
+	"strings"
 )
 
 type User struct {
@@ -49,6 +51,18 @@ func (this *User) LoopSelectCourse(config []CourserConfig) {
 			AddCookies(this.cookies).End()
 		var jsonInterface interface{}
 		json.Unmarshal([]byte(respBody), &jsonInterface)
-		// 剩下的等选课开放再写吧。
+		// 剩下的等选课开放再写吧。此处判断是否有课余量
 	}
+}
+
+func (this *User) getTokenAndFajhh(queryData string) (token, fajhh string) {
+	_, respBody, _ :=this.session.Get("http://202.115.47.141/student/courseSelect/freeCourse/index").
+		AddCookies(this.cookies).End()
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(respBody))
+	if err == nil{
+		panic(err)
+	}
+	token = document.Find("input[name=tokenValue]").Get(0).Data
+	fajhh = document.Find("input[name=fajhh]").Get(0).Data
+	return
 }
