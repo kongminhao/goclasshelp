@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/bitly/go-simplejson"
 	"github.com/parnurzeal/gorequest"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type User struct {
@@ -19,7 +21,7 @@ type User struct {
 func NewUser(stu_no, passwd string) User {
 	user := User{stu_no: stu_no, passwd: passwd, session: gorequest.New(), cookies: make([]*http.Cookie, 0)}
 	user.session.Transport.DisableKeepAlives = false
-	user.session.SetDebug(true)
+	user.session.SetDebug(false)
 	return user
 }
 
@@ -37,32 +39,87 @@ func (this *User) Login() (err error) {
 		AddCookies(this.cookies).End()
 
 	// enter course select
-	this.session.Get("http://202.115.47.141/student/courseSelect/courseSelect/index").
-		AddCookies(this.cookies).End()
+	for {
+		_, respbody, _ := this.session.Get("http://202.115.47.141/student/courseSelect/courseSelect/index").
+			AddCookies(this.cookies).End()
+		if strings.Contains(respbody, "非选课阶段") {
+			fmt.Println("当前为非选课阶段，10s后重试")
+			time.Sleep(time.Duration(10)* time.Second)
+		} else {
+			break
+		}
+	}
 	return nil
 }
 
-func (this *User) LoopSelectCourse(config []CourserConfig) {
-	for _, v := range config {
-		queryData := fmt.Sprintf("searchtj=%s&xq=0&jc=0&kyl=0&kclbdm=", v.courserId)
+func (this *User) LoopSelectCourse(config []*courseConfig) {
+	for _, course := range config {
+		if course.IsSelect == true {
+			continue
+		}
+		queryData := fmt.Sprintf("searchtj=%s&xq=0&jc=0&kyl=0&kclbdm=", course.courseId)
 		_, respBody, _ := this.session.Post("http://202.115.47.141/student/courseSelect/freeCourse/courseList").
 			Type("form").
 			Send(queryData).
 			AddCookies(this.cookies).End()
-		var jsonInterface interface{}
-		json.Unmarshal([]byte(respBody), &jsonInterface)
-		// 剩下的等选课开放再写吧。此处判断是否有课余量
+		js, err := simplejson.NewFromReader(strings.NewReader(respBody))
+		if err != nil {
+			fmt.Println(err) // error
+		}
+		courseInfo, err := js.Get("rwRxkZlList").String()
+		if err != nil {
+			fmt.Println(err) // error
+		}
+		courseJs, err := simplejson.NewFromReader(strings.NewReader(courseInfo))
+		courseArray, err := courseJs.Array()
+		if err != nil {
+			fmt.Println(err) // error
+		}
+		if len(courseArray) == 0 {
+			fmt.Printf("选课成功课程号%s\n", course.courseId)
+			course.IsSelect = true
+		}
+		for _, v := range courseArray {
+			m := v.(map[string]interface{})
+			if kxh, ok := m["kxh"]; ok {
+				if kxh.(string) != course.courseSeqNum {
+					continue
+				}
+			}
+			if kyl, ok := m["bkskyl"]; ok {
+				kckyl, _ := kyl.(json.Number).Int64()
+				if kckyl > 0 {
+					kcms := m["kcm"].(string) + "_" + course.courseId
+					kcids := course.courseId + "_" + course.courseSeqNum + "_" + m["zxjxjhh"].(string)
+					this.doSelect(kcms, course.courseId, kcids)
+				}else {
+					fmt.Println("尝试选课失败，原因:课余量不足")
+				}
+			}
+		}
 	}
 }
 
-func (this *User) getTokenAndFajhh(queryData string) (token, fajhh string) {
-	_, respBody, _ :=this.session.Get("http://202.115.47.141/student/courseSelect/freeCourse/index").
+func (this *User) getTokenAndFajhh() (token, fajhh string) {
+	_, respBody, _ := this.session.Get("http://202.115.47.141/student/courseSelect/freeCourse/index").
 		AddCookies(this.cookies).End()
 	document, err := goquery.NewDocumentFromReader(strings.NewReader(respBody))
-	if err == nil{
+	if err != nil {
 		panic(err)
 	}
-	token = document.Find("input[name=tokenValue]").Get(0).Data
-	fajhh = document.Find("input[name=fajhh]").Get(0).Data
+	token, _ = document.Find("input[name=tokenValue]").First().Attr("value")
+	fajhh, _ = document.Find("input[name=fajhh]").First().Attr("value")
 	return
+}
+
+func (this *User) doSelect(kcms string, searchtj string, kcids string) {
+	token, fajhh := this.getTokenAndFajhh()
+	queryData := fmt.Sprintf("tokenValue=%s&kcIds=%s&kcms=%s&fajhh=%s&sj=0_0&searchtj=%s&kclbdm=",
+		token, kcids, kcms, fajhh, searchtj)
+	this.session.Post("http://202.115.47.141/student/courseSelect/freeCourse/waitingfor?dealType=5").
+		Type("form").
+		Send(queryData).
+		AddCookies(this.cookies).End()
+	fmt.Println("尝试选课中......等待30s以便服务器处理结果")
+	time.Sleep(time.Second * time.Duration(30)) // sleep 30s, wait server finish.
 }
