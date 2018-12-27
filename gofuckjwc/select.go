@@ -57,6 +57,7 @@ func (this *User) LoopSelectCourse(config []*courseConfig) {
 		if course.IsSelect == true {
 			continue
 		}
+		time.Sleep(time.Duration(1) * time.Second)
 		queryData := fmt.Sprintf("searchtj=%s&xq=0&jc=0&kyl=0&kclbdm=", course.courseId)
 		_, respBody, _ := this.session.Post("http://202.115.47.141/student/courseSelect/freeCourse/courseList").
 			Type("form").
